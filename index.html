@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grocery Tracker</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛒</text></svg>">
     <style>
         :root {
             --primary: #2ecc71;
@@ -135,7 +134,6 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             display: none;
         }
-
         .forget-btn {
             background: #95a5a6 !important;
             margin-left: 5px;
@@ -340,10 +338,10 @@
                 item.quantity = Math.max(0, item.quantity + change);
                 item.lastUpdated = new Date().toISOString();
                 if (item.quantity <= 0) item.wasEverAdded = true;
-            } else if (change > 0) {
+            } else {
                 groceries.push({
                     name: name.toLowerCase(),
-                    quantity: change,
+                    quantity: Math.max(0, change),
                     lastUpdated: new Date().toISOString(),
                     wasEverAdded: true
                 });
@@ -353,7 +351,6 @@
             updateUI();
         }
 
-        // UI functions
         function updateUI() {
             const inventoryList = document.getElementById('inventory');
             inventoryList.innerHTML = groceries
@@ -383,6 +380,7 @@
                 `).join('');
         }
 
+        // Add this new function
         async function forgetItem(itemName) {
             const item = groceries.find(i => i.name === itemName.toLowerCase());
             if (item) {
@@ -391,6 +389,7 @@
                 updateUI();
             }
         }
+
 
         // Edit modal functions
         function openEditModal(itemName) {
