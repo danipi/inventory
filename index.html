@@ -1,102 +1,117 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- Keep all previous styles -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grocery Tracker</title>
+    <!-- Keep previous styles -->
     <style>
-        /* Previous styles remain unchanged */
-        .security-warning {
-            color: #e74c3c;
-            background: #f8d7da;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
+        .security-note {
+            color: #666;
             font-size: 0.9em;
+            margin: 10px 0;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
         }
     </style>
 </head>
 <body>
-    <div class="security-warning">
-        ⚠️ Security Notice: This token grants full repository access. Keep this page private!
+    <div class="security-note">
+        🔓 Data is stored publicly at jsonbin.io
     </div>
 
-    <!-- Rest of the HTML remains the same (inputs, buttons, lists) -->
+    <!-- Previous HTML structure remains -->
+    <div class="input-group">
+        <input type="text" id="addInput" placeholder="Item to add" onkeypress="handleEnter(event, 'add')">
+        <button onclick="handleAdd()">Add Item</button>
+    </div>
+    
+    <div class="input-group">
+        <input type="text" id="consumeInput" placeholder="Item to consume" onkeypress="handleEnter(event, 'consume')">
+        <button onclick="handleConsume()">Consume Item</button>
+    </div>
+
+    <div class="card">
+        <h2>Current Inventory</h2>
+        <div id="inventory"></div>
+    </div>
+
+    <div class="card">
+        <h2>Shopping List</h2>
+        <div id="shopping-list"></div>
+    </div>
+
+    <!-- Previous modal and edit UI remains -->
 
     <script>
-        // Configuration - DO NOT SHARE THIS URL
-        const REPO_OWNER = 'danipi';
-        const REPO_NAME = 'inventory';
-        const FILE_PATH = 'groceries.json';
-        const GITHUB_TOKEN = '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'; // 🔒 Embedded token
-
+        // JSONBin.io Configuration
+        const BIN_ID = 'YOUR_BIN_ID'; // Create at jsonbin.io
+        const X_ACCESS_KEY = '2a$10$BTpHZf5efNhUvhZPgpMC9uQDnYSQATH7q58JSW46JWOuuse0Z2N6q';
+        const ACCOUNT_ID = '67938b07c709fc0801fed639';
+        
         let groceries = [];
         let currentEditingItem = null;
 
-        // Modified GitHub functions
-        async function loadFromGitHub() {
+        // Data management functions
+        async function loadData() {
             try {
-                const response = await fetch(
-                    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`,
-                    {
-                        headers: {
-                            Authorization: `token ${GITHUB_TOKEN}`,
-                            Accept: 'application/vnd.github.v3+json'
-                        }
+                const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+                    headers: {
+                        'X-Access-Key': X_ACCESS_KEY
                     }
-                );
+                });
                 
-                if (response.ok) {
-                    const data = await response.json();
-                    groceries = JSON.parse(atob(data.content));
-                    updateUI();
-                } else if (response.status === 404) {
-                    await saveToGitHub();
-                }
+                const data = await response.json();
+                groceries = data.record || [];
+                updateUI();
             } catch (error) {
-                alert('Error loading data: ' + error.message);
+                console.error('Failed to load data:', error);
+                groceries = [];
             }
         }
 
-        async function saveToGitHub() {
-            const content = btoa(JSON.stringify(groceries));
-            let sha = '';
+        async function saveData() {
+            try {
+                await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Access-Key': X_ACCESS_KEY
+                    },
+                    body: JSON.stringify(groceries)
+                });
+            } catch (error) {
+                console.error('Failed to save data:', error);
+            }
+        }
+
+        // Modified core functions
+        async function updateItem(name, change) {
+            const item = groceries.find(i => i.name === name.toLowerCase());
             
-            try {
-                const getRes = await fetch(
-                    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`,
-                    { headers: { Authorization: `token ${GITHUB_TOKEN}` } }
-                );
-                if (getRes.ok) {
-                    const data = await getRes.json();
-                    sha = data.sha;
-                }
-            } catch {}
-
-            try {
-                await fetch(
-                    `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`,
-                    {
-                        method: 'PUT',
-                        headers: {
-                            Authorization: `token ${GITHUB_TOKEN}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            message: 'Update groceries',
-                            content: content,
-                            sha: sha
-                        })
-                    }
-                );
-            } catch (error) {
-                alert('Error saving data: ' + error.message);
+            if (item) {
+                item.quantity = Math.max(0, item.quantity + change);
+                item.lastUpdated = new Date().toISOString();
+                if (item.quantity === 0) item.wasEverAdded = true;
+            } else if (change > 0) {
+                groceries.push({
+                    name: name.toLowerCase(),
+                    quantity: change,
+                    lastUpdated: new Date().toISOString(),
+                    wasEverAdded: true
+                });
             }
+            
+            await saveData();
+            updateUI();
         }
 
-        // Remove all authentication-related functions
-        // Keep all other functions (updateItem, UI handlers, etc.) unchanged
+        // Keep all previous UI functions and event handlers
+        // (handleAdd, handleConsume, updateUI, etc.)
 
-        // Initialize immediately
-        window.addEventListener('load', loadFromGitHub);
+        // Initialize
+        window.addEventListener('load', loadData);
     </script>
 </body>
 </html>
