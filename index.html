@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grocery Tracker</title>
+    <style>
+        :root {
+            --primary: #2ecc71;
+            --secondary: #f1c40f;
+        }
+
+        body {
+            font-family: -apple-system, sans-serif;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .voice-btn {
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            border: none;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.16);
+        }
+
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        button {
+            background: var(--secondary);
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Grocery Tracker 🛒</h1>
+    
+    <div class="card">
+        <h2>Current Inventory</h2>
+        <ul id="inventory"></ul>
+    </div>
+
+    <div class="card">
+        <h2>Shopping List</h2>
+        <ul id="shopping-list"></ul>
+    </div>
+
+    <button class="voice-btn" onclick="startVoice()">🎤</button>
+
+    <script>
+        // Data storage (upgrade to Firebase/backend for persistence)
+        let groceries = JSON.parse(localStorage.getItem('groceries')) || [];
+
+        // Voice recognition
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript.toLowerCase();
+            processVoiceCommand(transcript);
+        };
+
+        function startVoice() {
+            recognition.start();
+        }
+
+        function processVoiceCommand(text) {
+            const addMatch = text.match(/add (\d+ )?(.+)/);
+            const consumeMatch = text.match(/consume (\d+ )?(.+)/);
+
+            if (addMatch) {
+                const quantity = addMatch[1] ? parseInt(addMatch[1]) : 1;
+                updateItem(addMatch[2], quantity);
+            } else if (consumeMatch) {
+                const quantity = consumeMatch[1] ? parseInt(consumeMatch[1]) : 1;
+                updateItem(consumeMatch[2], -quantity);
+            }
+            updateUI();
+        }
+
+        function updateItem(name, change) {
+            const item = groceries.find(i => i.name === name);
+            
+            if (item) {
+                item.quantity = Math.max(0, item.quantity + change);
+                item.lastUpdated = new Date();
+            } else if (change > 0) {
+                groceries.push({
+                    name: name,
+                    quantity: change,
+                    lastUpdated: new Date(),
+                    wasEverAdded: true
+                });
+            }
+            
+            localStorage.setItem('groceries', JSON.stringify(groceries));
+        }
+
+        function updateUI() {
+            // Inventory
+            const inventoryList = document.getElementById('inventory');
+            inventoryList.innerHTML = groceries
+                .filter(i => i.quantity > 0)
+                .map(i => `
+                    <li>
+                        ${i.name} (${i.quantity})
+                        <button onclick="updateItem('${i.name}', -1)">-1</button>
+                        <button onclick="updateItem('${i.name}', 1)">+1</button>
+                    </li>
+                `).join('');
+
+            // Shopping List
+            const shoppingList = document.getElementById('shopping-list');
+            shoppingList.innerHTML = groceries
+                .filter(i => i.quantity === 0 && i.wasEverAdded)
+                .map(i => `
+                    <li>
+                        ${i.name}
+                        <button onclick="updateItem('${i.name}', 1)">Restock</button>
+                    </li>
+                `).join('');
+        }
+
+        // Initial load
+        updateUI();
+    </script>
+</body>
+</html>
