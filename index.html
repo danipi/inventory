@@ -28,7 +28,7 @@
             flex: 1;
             padding: 10px;
             border: 1px solid #ddd;
-            border-radius: 5px;
+            border-radius: 5x;
             font-size: 16px;
         }
 
@@ -114,13 +114,13 @@
     <div class="loading" id="loading">Saving...</div>
 
     <div class="input-group">
-        <input type="text" id="addInput" placeholder="Item to add" onkeypress="handleEnter(event, 'add')">
-        <button onclick="handleAdd()" style="background: var(--primary); color: white;">Add Item</button>
+        <input type="text" id="addInput" placeholder="Item name" onkeypress="handleEnter(event, 'add')">
+        <button onclick="handleAdd()" style="background: var(--primary); color: white;">Bought / Found at home</button>
     </div>
     
     <div class="input-group">
-        <input type="text" id="consumeInput" placeholder="Item to consume" onkeypress="handleEnter(event, 'consume')">
-        <button onclick="handleConsume()" style="background: var(--secondary);">Consume Item</button>
+        <input type="text" id="consumeInput" placeholder="Item name" onkeypress="handleEnter(event, 'consume')">
+        <button onclick="handleConsume()" style="background: var(--secondary);">Ran out</button>
     </div>
 
     <div class="card">
@@ -145,15 +145,13 @@
     </div>
 
     <script>
-        // JSONBin.io Configuration
-        const BIN_ID = '67938e65ad19ca34f8f3b6b6'; // Your bin ID
+        const BIN_ID = '67938e65ad19ca34f8f3b6b6';
         const X_ACCESS_KEY = '$2a$10$BTpHZf5efNhUvhZPgpMC9uQDnYSQATH7q58JSW46JWOuuse0Z2N6q';
         
         let groceries = [];
         let currentEditingItem = null;
         let isSaving = false;
 
-        // Data management
         async function loadData() {
             try {
                 const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
@@ -196,7 +194,6 @@
             }
         }
 
-        // Core functions
         function handleAdd() {
             const itemName = document.getElementById('addInput').value.trim();
             if (itemName) {
@@ -208,7 +205,9 @@
         function handleConsume() {
             const itemName = document.getElementById('consumeInput').value.trim();
             if (itemName) {
-                updateItem(itemName, -1);
+                const item = groceries.find(i => i.name === itemName.toLowerCase());
+                const currentQty = item ? item.quantity : 0;
+                updateItem(itemName, -currentQty - 1);
                 document.getElementById('consumeInput').value = '';
             }
         }
@@ -219,11 +218,11 @@
             if (item) {
                 item.quantity = Math.max(0, item.quantity + change);
                 item.lastUpdated = new Date().toISOString();
-                if (item.quantity === 0) item.wasEverAdded = true;
-            } else if (change > 0) {
+                if (item.quantity <= 0) item.wasEverAdded = true;
+            } else {
                 groceries.push({
                     name: name.toLowerCase(),
-                    quantity: change,
+                    quantity: Math.max(0, change),
                     lastUpdated: new Date().toISOString(),
                     wasEverAdded: true
                 });
@@ -233,7 +232,6 @@
             updateUI();
         }
 
-        // UI functions
         function updateUI() {
             const inventoryList = document.getElementById('inventory');
             inventoryList.innerHTML = groceries
@@ -251,7 +249,7 @@
 
             const shoppingList = document.getElementById('shopping-list');
             shoppingList.innerHTML = groceries
-                .filter(i => i.quantity === 0 && i.wasEverAdded)
+                .filter(i => i.quantity <= 0 && i.wasEverAdded)
                 .map(i => `
                     <div class="item" onclick="openEditModal('${i.name}')">
                         <span>${i.name}</span>
@@ -260,7 +258,6 @@
                 `).join('');
         }
 
-        // Edit modal functions
         function openEditModal(itemName) {
             currentEditingItem = itemName;
             const item = groceries.find(i => i.name === itemName);
@@ -287,7 +284,6 @@
             closeModal();
         }
 
-        // Helpers
         function handleEnter(event, action) {
             if (event.key === 'Enter') {
                 event.preventDefault();
@@ -304,7 +300,6 @@
             document.getElementById('loading').style.display = 'none';
         }
 
-        // Initialize
         window.addEventListener('load', loadData);
         window.addEventListener('beforeunload', (e) => {
             if (isSaving) {
