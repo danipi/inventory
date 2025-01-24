@@ -57,6 +57,7 @@
             margin: 5px 0;
             border-radius: 5px;
             background: #f8f8f8;
+            cursor: pointer;
         }
 
         .quantity-controls {
@@ -74,9 +75,28 @@
             color: white;
         }
 
-        .forget-btn {
-            background: #95a5a6 !important;
-            margin-left: 5px;
+        .modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.2);
+            z-index: 1000;
+            width: 300px;
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
         }
 
         .loading {
@@ -89,10 +109,42 @@
             padding: 8px 15px;
             border-radius: 20px;
         }
+
+        .voice-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--primary);
+            color: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.16);
+        }
+
+        #voiceStatus {
+            position: fixed;
+            bottom: 100px;
+            right: 30px;
+            background: white;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: none;
+        }
+
+        .forget-btn {
+            background: #95a5a6 !important;
+            margin-left: 5px;
+        }
     </style>
 </head>
 <body>
     <div class="loading" id="loading">Saving...</div>
+    <div id="voiceStatus">🎤 Listening...</div>
 
     <div class="input-group">
         <input type="text" id="addInput" placeholder="Item name (e.g., '2 eggs')" onkeypress="handleEnter(event, 'add')">
@@ -102,6 +154,10 @@
     <div class="input-group">
         <input type="text" id="consumeInput" placeholder="Item name (e.g., '3 milk')" onkeypress="handleEnter(event, 'consume')">
         <button onclick="handleConsume()" style="background: var(--secondary);">Ran out</button>
+    </div>
+
+    <div class="input-group">
+        <button onclick="handleShopping()" style="background: var(--primary); color: white;">Went shopping</button>
     </div>
 
     <div class="card">
@@ -114,25 +170,92 @@
         <div id="shopping-list"></div>
     </div>
 
+    <button class="voice-btn" onclick="startVoiceRecognition()">🎤</button>
+
+    <div class="modal-overlay" id="modalOverlay"></div>
+    <div class="modal" id="editModal">
+        <h3>Edit Item</h3>
+        <input type="number" id="editQuantity" min="0" value="1" style="width: 100%; margin: 10px 0; padding: 8px;">
+        <div style="display: flex; gap: 10px;">
+            <button onclick="saveChanges()" style="background: var(--primary); color: white;">Save</button>
+            <button onclick="deleteItem()" style="background: var(--danger); color: white;">Delete</button>
+            <button onclick="closeModal()">Cancel</button>
+        </div>
+    </div>
+
     <script>
         const BIN_ID = '67938e65ad19ca34f8f3b6b6';
         const X_ACCESS_KEY = '$2a$10$BTpHZf5efNhUvhZPgpMC9uQDnYSQATH7q58JSW46JWOuuse0Z2N6q';
         
         let groceries = [];
+        let currentEditingItem = null;
         let isSaving = false;
+        let recognition = null;
 
+        // Speech Recognition
+        function initializeSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (SpeechRecognition) {
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.lang = 'en-US';
+                recognition.interimResults = false;
+
+                recognition.onstart = () => {
+                    document.getElementById('voiceStatus').style.display = 'block';
+                };
+
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript.toLowerCase();
+                    document.getElementById('voiceStatus').textContent = `Heard: "${transcript}"`;
+                    processVoiceCommand(transcript);
+                    setTimeout(() => document.getElementById('voiceStatus').style.display = 'none', 2000);
+                };
+
+                recognition.onerror = () => {
+                    document.getElementById('voiceStatus').style.display = 'none';
+                };
+            }
+        }
+
+        function processVoiceCommand(transcript) {
+            const gotMatch = transcript.match(/got (\d+)?\s?(.+)/);
+            const ranOutMatch = transcript.match(/ran out of (\d+)?\s?(.+)/);
+
+            if (gotMatch) {
+                const quantity = gotMatch[1] ? parseInt(gotMatch[1]) : 1;
+                updateItem(gotMatch[2].trim(), quantity);
+            } else if (ranOutMatch) {
+                const quantity = ranOutMatch[1] ? parseInt(ranOutMatch[1]) : 1;
+                const itemName = ranOutMatch[2].trim();
+                updateItem(itemName, -quantity);
+            }
+        }
+
+        function startVoiceRecognition() {
+            if (!recognition) {
+                alert('Speech recognition not supported in this browser');
+                return;
+            }
+            recognition.start();
+        }
+
+        // Data management
         async function loadData() {
             try {
                 const response = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
                     headers: { 'X-Access-Key': X_ACCESS_KEY }
                 });
+                
+                if (!response.ok) throw new Error('Failed to load');
+                
                 const data = await response.json();
                 groceries = data.record || [];
                 updateUI();
             } catch (error) {
                 console.error('Loading failed:', error);
                 const localData = localStorage.getItem('groceries');
-                groceries = localData ? JSON.parse(localData) : [];
+                if (localData) groceries = JSON.parse(localData);
                 updateUI();
             }
         }
@@ -140,8 +263,10 @@
         async function saveData() {
             isSaving = true;
             showLoading();
+            
             try {
                 localStorage.setItem('groceries', JSON.stringify(groceries));
+                
                 await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
                     method: 'PUT',
                     headers: {
@@ -158,86 +283,148 @@
             }
         }
 
+        // Core functions
         function handleAdd() {
             const input = document.getElementById('addInput').value.trim();
-            const match = input.match(/^(\d+)\s+(.+)/) || [, 1, input];
-            const quantity = parseInt(match[1]);
-            const itemName = match[2].toLowerCase();
+            let quantity = 1;
+            let itemName = input;
+            
+            const match = input.match(/^(\d+)\s+(.+)/);
+            if (match) {
+                quantity = parseInt(match[1], 10);
+                itemName = match[2];
+            }
             
             if (itemName) {
-                const existing = groceries.find(i => i.name === itemName);
-                if (existing) {
-                    existing.quantity += quantity;
-                } else {
-                    groceries.push({ name: itemName, quantity: quantity });
-                }
-                saveData();
+                updateItem(itemName, quantity);
                 document.getElementById('addInput').value = '';
             }
         }
 
         function handleConsume() {
             const input = document.getElementById('consumeInput').value.trim();
-            const match = input.match(/^(\d+)\s+(.+)/) || [, 1, input];
-            const quantity = parseInt(match[1]);
-            const itemName = match[2].toLowerCase();
+            let quantity = 1;
+            let itemName = input;
             
-            const item = groceries.find(i => i.name === itemName);
-            if (item) {
-                item.quantity = Math.max(0, item.quantity - quantity);
-                if (item.quantity === 0) {
-                    groceries = groceries.filter(i => i.quantity > 0);
-                }
-                saveData();
+            const match = input.match(/^(\d+)\s+(.+)/);
+            if (match) {
+                quantity = parseInt(match[1], 10);
+                itemName = match[2];
+            }
+            
+            if (itemName) {
+                updateItem(itemName, -quantity);
                 document.getElementById('consumeInput').value = '';
             }
         }
 
+        function handleShopping() {
+            const shoppingItems = groceries.filter(i => i.quantity <= 0 && i.wasEverAdded);
+            shoppingItems.forEach(item => {
+                const existing = groceries.find(i => i.name === item.name && i.quantity > 0);
+                if (existing) {
+                    existing.quantity += 1;
+                } else {
+                    item.quantity = 1;
+                }
+                item.wasEverAdded = true;
+            });
+            saveData();
+            updateUI();
+        }
+
+        async function updateItem(name, change) {
+            const item = groceries.find(i => i.name === name.toLowerCase());
+            
+            if (item) {
+                item.quantity = Math.max(0, item.quantity + change);
+                item.lastUpdated = new Date().toISOString();
+                if (item.quantity <= 0) item.wasEverAdded = true;
+            } else if (change > 0) {
+                groceries.push({
+                    name: name.toLowerCase(),
+                    quantity: change,
+                    lastUpdated: new Date().toISOString(),
+                    wasEverAdded: true
+                });
+            }
+            
+            await saveData();
+            updateUI();
+        }
+
+        // UI functions
         function updateUI() {
-            document.getElementById('inventory').innerHTML = groceries
+            const inventoryList = document.getElementById('inventory');
+            inventoryList.innerHTML = groceries
+                .filter(i => i.quantity > 0)
                 .map(i => `
-                    <div class="item">
+                    <div class="item" onclick="openEditModal('${i.name}')">
                         <span>${i.name}</span>
                         <div class="quantity-controls">
-                            <button class="quantity-btn" onclick="updateQuantity('${i.name}', -1)">-</button>
+                            <button class="quantity-btn" onclick="updateItem('${i.name}', -1); event.stopPropagation()">-</button>
                             <span>${i.quantity}</span>
-                            <button class="quantity-btn" onclick="updateQuantity('${i.name}', 1)">+</button>
+                            <button class="quantity-btn" onclick="updateItem('${i.name}', 1); event.stopPropagation()">+</button>
                         </div>
                     </div>
                 `).join('');
 
-            document.getElementById('shopping-list').innerHTML = groceries
-                .filter(i => i.quantity === 0)
+            const shoppingList = document.getElementById('shopping-list');
+            shoppingList.innerHTML = groceries
+                .filter(i => i.quantity <= 0 && i.wasEverAdded)
                 .map(i => `
-                    <div class="item">
+                    <div class="item" onclick="openEditModal('${i.name}')">
                         <span>${i.name}</span>
-                        <button class="forget-btn" onclick="forgetItem('${i.name}')">Forget</button>
+                        <div>
+                            <button onclick="updateItem('${i.name}', 1); event.stopPropagation()">Restock</button>
+                            <button class="forget-btn" onclick="forgetItem('${i.name}'); event.stopPropagation()">Forget</button>
+                        </div>
                     </div>
                 `).join('');
         }
 
-        async function updateQuantity(name, change) {
-            const item = groceries.find(i => i.name === name);
+        async function forgetItem(itemName) {
+            const item = groceries.find(i => i.name === itemName.toLowerCase());
             if (item) {
-                item.quantity = Math.max(0, item.quantity + change);
-                if (item.quantity === 0) {
-                    groceries = groceries.filter(i => i.quantity > 0);
-                }
+                item.wasEverAdded = false;
                 await saveData();
                 updateUI();
             }
         }
 
-        async function forgetItem(name) {
-            groceries = groceries.filter(i => i.name !== name);
-            await saveData();
-            updateUI();
+        // Edit modal functions
+        function openEditModal(itemName) {
+            currentEditingItem = itemName;
+            const item = groceries.find(i => i.name === itemName);
+            document.getElementById('editQuantity').value = item?.quantity || 1;
+            document.getElementById('modalOverlay').style.display = 'block';
+            document.getElementById('editModal').style.display = 'block';
         }
 
+        function closeModal() {
+            document.getElementById('modalOverlay').style.display = 'none';
+            document.getElementById('editModal').style.display = 'none';
+            currentEditingItem = null;
+        }
+
+        async function saveChanges() {
+            const newQuantity = parseInt(document.getElementById('editQuantity').value);
+            const currentQuantity = groceries.find(i => i.name === currentEditingItem)?.quantity || 0;
+            await updateItem(currentEditingItem, newQuantity - currentQuantity);
+            closeModal();
+        }
+
+        async function deleteItem() {
+            await updateItem(currentEditingItem, -Infinity);
+            closeModal();
+        }
+
+        // Helpers
         function handleEnter(event, action) {
             if (event.key === 'Enter') {
                 event.preventDefault();
-                action === 'add' ? handleAdd() : handleConsume();
+                if (action === 'add') handleAdd();
+                if (action === 'consume') handleConsume();
             }
         }
 
@@ -249,9 +436,16 @@
             document.getElementById('loading').style.display = 'none';
         }
 
-        window.addEventListener('load', loadData);
+        // Initialize
+        window.addEventListener('load', () => {
+            loadData();
+            initializeSpeechRecognition();
+        });
         window.addEventListener('beforeunload', (e) => {
-            if (isSaving) e.returnValue = '';
+            if (isSaving) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
         });
     </script>
 </body>
